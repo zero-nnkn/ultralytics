@@ -34,6 +34,7 @@ from .block import (
     C3x,
     GhostBottleneck,
     HGBlock,
+    HGAttnBlock,
     HGStem,
     Proto,
     RepC3,

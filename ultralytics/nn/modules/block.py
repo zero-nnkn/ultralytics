@@ -5,12 +5,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .conv import Conv, DWConv, GhostConv, LightConv, RepConv, autopad
+from .conv import CBAM, Conv, DWConv, GhostConv, LightConv, RepConv, autopad
 from .transformer import TransformerBlock
 
 __all__ = (
     "DFL",
     "HGBlock",
+    "HGAttnBlock",
     "HGStem",
     "SPP",
     "SPPF",
@@ -125,6 +126,32 @@ class HGBlock(nn.Module):
         super().__init__()
         block = LightConv if lightconv else Conv
         self.m = nn.ModuleList(block(c1 if i == 0 else cm, cm, k=k, act=act) for i in range(n))
+        self.sc = Conv(c1 + n * cm, c2 // 2, 1, 1, act=act)  # squeeze conv
+        self.ec = Conv(c2 // 2, c2, 1, 1, act=act)  # excitation conv
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """Forward pass of a PPHGNetV2 backbone layer."""
+        y = [x]
+        y.extend(m(y[-1]) for m in self.m)
+        y = self.ec(self.sc(torch.cat(y, 1)))
+        return y + x if self.add else y
+
+
+class HGAttnBlock(nn.Module):
+    """
+    HG_Block of PPHGNetV2 with 2 convolutions and LightConv + Convolutional Block Attention Module.
+
+    https://github.com/PaddlePaddle/PaddleDetection/blob/develop/ppdet/modeling/backbones/hgnet_v2.py
+    """
+
+    def __init__(self, c1, cm, c2, k=3, n=6, lightconv=False, shortcut=False, act=nn.ReLU(), attn=CBAM):
+        """Initializes a CSP Bottleneck with 1 convolution using specified input and output channels."""
+        super().__init__()
+        block = LightConv if lightconv else Conv
+        self.m = nn.ModuleList(
+            nn.Sequential(block(c1 if i == 0 else cm, cm, k=k, act=act), attn(cm)) for i in range(n)
+        )
         self.sc = Conv(c1 + n * cm, c2 // 2, 1, 1, act=act)  # squeeze conv
         self.ec = Conv(c2 // 2, c2, 1, 1, act=act)  # excitation conv
         self.add = shortcut and c1 == c2
