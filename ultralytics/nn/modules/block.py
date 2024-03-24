@@ -12,6 +12,7 @@ __all__ = (
     "DFL",
     "HGBlock",
     "HGAttnBlock",
+    "HGPoolStem",
     "HGStem",
     "SPP",
     "SPPF",
@@ -111,6 +112,32 @@ class HGStem(nn.Module):
         x = torch.cat([x1, x2], dim=1)
         x = self.stem3(x)
         x = self.stem4(x)
+        return x
+
+
+class HGPoolStem(nn.Module):
+    def __init__(self, c1, c2, max_pool=False):
+        """Initialize the SPP layer with input/output channels and specified kernel sizes for max pooling."""
+        super().__init__()
+        pool_block = nn.MaxPool2d if max_pool else nn.AvgPool2d
+        # self.stem0 = Conv(c1, cm, 3, 2, act=nn.ReLU())
+        self.stem1 = GhostConv(c1, c1, 1, 1, 1, act=nn.ReLU())
+        self.stem2a = Conv(c1, c1 // 2, 1, 1, 0, act=nn.ReLU())
+        self.stem2b = Conv(c1 // 2, c1, 3, 2, 0, act=nn.ReLU())
+        self.stem3 = Conv(2*c1, c2, 1, 1, act=nn.ReLU())
+        self.pool = pool_block(kernel_size=2)
+
+    def forward(self, x):
+        """Forward pass of a PPHGNetV2 backbone layer."""
+        # x = self.stem0(x)
+        x = F.pad(x, [0, 1, 0, 1])
+        x1 = self.pool(x)
+        x1 = self.stem1(x1)
+        x2 = self.stem2a(x)
+        x2 = F.pad(x2, [0, 1, 0, 1])
+        x2 = self.stem2b(x2)
+        x = torch.cat([x1, x2], dim=1)
+        x = self.stem3(x)
         return x
 
 
@@ -687,7 +714,7 @@ class Silence(nn.Module):
 
     def __init__(self):
         """Initializes the Silence module."""
-        super(Silence, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         """Forward pass through Silence layer."""
@@ -699,7 +726,7 @@ class CBLinear(nn.Module):
 
     def __init__(self, c1, c2s, k=1, s=1, p=None, g=1):
         """Initializes the CBLinear module, passing inputs unchanged."""
-        super(CBLinear, self).__init__()
+        super().__init__()
         self.c2s = c2s
         self.conv = nn.Conv2d(c1, sum(c2s), k, s, autopad(k, p), groups=g, bias=True)
 
@@ -714,7 +741,7 @@ class CBFuse(nn.Module):
 
     def __init__(self, idx):
         """Initializes CBFuse module with layer index for selective feature fusion."""
-        super(CBFuse, self).__init__()
+        super().__init__()
         self.idx = idx
 
     def forward(self, xs):
